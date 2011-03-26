@@ -1,6 +1,6 @@
 package GitWebHTTP;
 
-#ABSTRACT: Simple HTTP server for serving a CPAN mirror
+#ABSTRACT: Simple HTTP server for serving gitweb.cgi
 
 use strict;
 use warnings;
