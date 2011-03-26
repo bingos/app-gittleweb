@@ -1,6 +1,6 @@
 package GitWebHTTP;
 
-#ABSTRACT: Simple HTTP server for serving gitweb.cgi
+#ABSTRACT: Simple HTTP server for serving a CPAN mirror
 
 use strict;
 use warnings;
@@ -18,7 +18,24 @@ use IO::Handle;
 
 my $loghandle;
 
-sub run {
+=for comment
+
+unshift @INC, sub {
+    my ($self, $file) = @_;
+    return unless $file eq 'gitweb.cgi';
+    open my $in, '<', $file or return;
+    my @one = "1;\n";
+    (
+        sub {
+            $_ = eof $in ? shift @one : <$in>;
+            scalar @one
+        },
+    )
+};
+
+=cut
+
+sub run_it {
   my $root = Cwd::getcwd();
   my $port = '8080';
   my $conf;
@@ -88,10 +105,12 @@ sub _handle_request {
         local $ENV{'REMOTE_ADDR'} = $conn->peerhost();
         local $ENV{'REMOTE_HOST'} = $ENV{'REMOTE_ADDR'};
         local $ENV{'REMOTE_PORT'} = $conn->peerport();
-        eval {
-          do 'gitweb.cgi';
-        };
-        warn $@ if $@;
+        {
+          no warnings 'redefine';
+          eval {
+            require 'gitweb.cgi';
+          };
+        }
         $c->restore;
         my $resp = $c->response;
         $conn->send_response( $resp );
