@@ -18,23 +18,6 @@ use IO::Handle;
 
 my $loghandle;
 
-=for comment
-
-unshift @INC, sub {
-    my ($self, $file) = @_;
-    return unless $file eq 'gitweb.cgi';
-    open my $in, '<', $file or return;
-    my @one = "1;\n";
-    (
-        sub {
-            $_ = eof $in ? shift @one : <$in>;
-            scalar @one
-        },
-    )
-};
-
-=cut
-
 sub run_it {
   my $root = Cwd::getcwd();
   my $port = '8080';
@@ -90,7 +73,6 @@ sub _handle_request {
   my $conn = shift;
   my $root = shift;
   REQ: while (my $req = $conn->get_request) {
-    print $loghandle join("\t",time(),$conn->peerhost(),$req->uri->path_query), "\n";
     if ($req->method eq 'GET' ) {
       my @path = $req->uri->path_segments;
       my $path = File::Spec->catfile( $root, @path );
@@ -107,6 +89,8 @@ sub _handle_request {
         local $ENV{'REMOTE_PORT'} = $conn->peerport();
         {
           no warnings 'redefine';
+          local *STDERR;
+          open STDERR, '>', File::Spec->devnull;
           eval {
             require 'gitweb.cgi';
           };
@@ -114,18 +98,32 @@ sub _handle_request {
         $c->restore;
         my $resp = $c->response;
         $conn->send_response( $resp );
+        print $loghandle _log_line( $conn, $req, $resp->code, length( $resp->content ) ), "\n";
         next REQ;
       }
       unless ( -e $path ) {
         $conn->send_error(RC_NOT_FOUND);
+        print $loghandle _log_line( $conn, $req, RC_NOT_FOUND, '-' ), "\n";
         next REQ;
       }
-      $conn->send_file_response( $path );
+      my $code = $conn->send_file_response( $path );
+      my $bytes = ( $code == RC_OK ? ( stat $path )[7] : '-' );
+      print $loghandle _log_line( $conn, $req, $code, $bytes ), "\n";
     }
     else {
-      $conn->send_error(RC_FORBIDDEN)
+      $conn->send_error(RC_FORBIDDEN);
+      print $loghandle _log_line( $conn, $req, RC_FORBIDDEN, '-' ), "\n";
     }
   }
+}
+
+sub _log_line {
+  my ($conn,$req,$code,$bytes) = @_;
+  $code = '-' unless $code;
+  $bytes = '-' unless defined $bytes;
+  my $request = '"' . join(' ', $req->method, $req->uri->path_query, $req->protocol) . '"';
+  my $line = join ' ', $conn->peerhost, '-', '-', strftime("[%d/%b/%Y:%H:%M:%S %z]",localtime), $request, $code, $bytes;
+  return $line;
 }
 
 q[Gittle flittle];
