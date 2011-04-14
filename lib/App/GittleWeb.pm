@@ -83,7 +83,7 @@ sub _handle_request {
         my $c = HTTP::Request::AsCGI->new(
           $req,
           'SCRIPT_NAME', '/gitweb.cgi',
-          'SCRIPT_FILENAME', '/home/ec2-user/web/gitweb.cgi'
+          'SCRIPT_FILENAME', File::Spec->catfile( Cwd::cwd(), 'gitweb.cgi' ),
         )->setup;
         local $ENV{'PATH_INFO'} = uri_unescape( $ENV{'PATH_INFO'} );
         local $ENV{'REQUEST_URI'} = uri_unescape( $ENV{'REQUEST_URI'} );
