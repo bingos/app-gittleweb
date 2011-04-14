@@ -1,4 +1,4 @@
-package GitWebHTTP;
+package App::GittleWeb;
 
 #ABSTRACT: Simple HTTP server for serving gitweb.cgi
 
@@ -15,8 +15,10 @@ use URI::Escape;
 use POSIX qw[strftime :sys_wait_h];
 use Getopt::Long;
 use IO::Handle;
+use Sys::Hostname;
 
 my $loghandle;
+my $HOST;
 
 sub run_it {
   my $root = Cwd::getcwd();
@@ -29,6 +31,7 @@ sub run_it {
     "port=i", \$port,
     "config=s", \$conf,
     "logfile=s", \$logfile,
+    "host=s", \$HOST,
   );
 
   Cwd::chdir( $root ) or die "$!\n";
@@ -98,32 +101,41 @@ sub _handle_request {
         $c->restore;
         my $resp = $c->response;
         $conn->send_response( $resp );
-        print $loghandle _log_line( $conn, $req, $resp->code, length( $resp->content ) ), "\n";
+        _log_it( $conn, $req, $resp->code, length( $resp->content ) );
+        next REQ;
+      }
+      if ( $req->uri->path eq '/' ) {
+        my $host = $req->header('Host') || $HOST || 'dunno.local';
+        $host =~ s/(:\d+)$//;
+        $Sys::Hostname::host = $host;
+        $conn->send_redirect( '/gitweb.cgi', '302' );
         next REQ;
       }
       unless ( -e $path ) {
         $conn->send_error(RC_NOT_FOUND);
-        print $loghandle _log_line( $conn, $req, RC_NOT_FOUND, '-' ), "\n";
+        _log_it( $conn, $req, RC_NOT_FOUND, '-' );
         next REQ;
       }
       my $code = $conn->send_file_response( $path );
       my $bytes = ( $code == RC_OK ? ( stat $path )[7] : '-' );
-      print $loghandle _log_line( $conn, $req, $code, $bytes ), "\n";
+      _log_it( $conn, $req, $code, $bytes );
     }
     else {
       $conn->send_error(RC_FORBIDDEN);
-      print $loghandle _log_line( $conn, $req, RC_FORBIDDEN, '-' ), "\n";
+      _log_it( $conn, $req, RC_FORBIDDEN, '-' );
     }
   }
 }
 
-sub _log_line {
+sub _log_it {
   my ($conn,$req,$code,$bytes) = @_;
+  return unless $loghandle;
   $code = '-' unless $code;
   $bytes = '-' unless defined $bytes;
   my $request = '"' . join(' ', $req->method, $req->uri->path_query, $req->protocol) . '"';
-  my $line = join ' ', $conn->peerhost, '-', '-', strftime("[%d/%b/%Y:%H:%M:%S %z]",localtime), $request, $code, $bytes;
-  return $line;
+  print $loghandle join ' ', $conn->peerhost, '-', '-', strftime("[%d/%b/%Y:%H:%M:%S %z]",localtime), $request, $code, $bytes;
+  print $loghandle "\n";
+  return 1;
 }
 
 q[Gittle flittle];
